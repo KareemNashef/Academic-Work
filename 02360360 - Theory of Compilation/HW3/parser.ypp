@@ -1,0 +1,147 @@
+%{
+    #include <stdio.h>
+    #include <iostream>
+    #include "Nodes.hpp"
+
+    extern int yylex();
+    void yyerror(const char * Error);
+%}
+
+%nonassoc   VOID
+%nonassoc   INT
+%nonassoc   BYTE
+%nonassoc   B
+%nonassoc   BOOL
+%left       AND
+%left       OR
+%right      NOT
+%nonassoc   TRUE
+%nonassoc   FALSE
+%nonassoc   RETURN
+%right      IF
+%right      ELSE
+%nonassoc   WHILE
+%nonassoc   BREAK
+%nonassoc   CONTINUE
+%nonassoc   SC
+%nonassoc   COMMA
+%left       LPAREN
+%left       RPAREN
+%nonassoc   LBRACE
+%nonassoc   RBRACE
+%right      ASSIGN
+%left       RELOP
+%left       BINOP
+%nonassoc   ID
+%nonassoc   NUM
+%nonassoc   STRING
+
+%%
+
+Program                     : { $$ = new Program(); }   Funcs   { ProgramFinish(); }
+                            ;
+
+Funcs                       : FuncDecl Funcs                                                { $$ = new Funcs(); }
+                            |                                                               { $$ = new Funcs(); }
+                            ;
+
+FuncDecl                    : RetType ID LPAREN Formals RPAREN  { $$ = new FuncDecl((RetType*)($1) , ($2) , (Formals*)($4)); }  LBRACE OpenScope { InsertArgs((Formals*)($4)); } Statements CloseScope { FunctionFinish(); } RBRACE
+                            ;
+
+RetType                     : Type                                                          { $$ = new RetType((Type*)($1)); } 
+                            | VOID                                                          { $$ = new RetType($1); } 
+                            ;
+
+Formals                     : FormalsList                                                   { $$ = new Formals((FormalsList*)($1)); }
+                            |                                                               { $$ = new Formals(); }
+                            ;
+
+FormalsList                 : FormalDecl COMMA FormalsList                                  { $$ = new FormalsList((FormalDecl*)($1) , (FormalsList*)($3)); }
+                            | FormalDecl                                                    { $$ = new FormalsList((FormalDecl*)($1)); }
+                            ;
+
+FormalDecl                  : Type ID                                                       { $$ = new FormalDecl((Type*)($1) , $2); }
+                            ; 
+
+Statements                  : Statements Statement                                          { ; }
+                            | Statement                                                     { ; }
+                            ;
+
+Statement                   : OStatement                                                    { ; }
+                            | CStatement                                                    { ; }
+                            ;
+
+OStatement                  : IF LPAREN Exp RPAREN OpenScope Statement                                                      { $$ = new OStatement((Exp*)($3)); CloseScope(); }
+                            | IF LPAREN Exp RPAREN OpenScope CStatement CloseScope ELSE OpenScope OStatement                { $$ = new OStatement((Exp*)($3)); CloseScope(); }
+                            | WHILE LPAREN Exp RPAREN OpenScope OpenLoop OStatement CloseLoop                               { $$ = new OStatement((Exp*)($3)); CloseScope(); }
+                            ;
+
+CStatement                  : NIStatement                                                                                   { ; }
+                            | IF LPAREN Exp RPAREN OpenScope CStatement CloseScope ELSE OpenScope CStatement                { $$ = new CStatement((Exp*)($3)); CloseScope(); }
+                            | WHILE LPAREN Exp RPAREN OpenScope OpenLoop CStatement CloseLoop                               { $$ = new CStatement((Exp*)($3)); CloseScope(); }
+                            ;
+
+NIStatement                 : LBRACE OpenScope Statements CloseScope RBRACE                 { ; }
+                            | Type ID SC                                                    { $$ = new NIStatement((Type*)($1) , $2); }
+                            | Type ID ASSIGN Exp SC                                         { $$ = new NIStatement((Type*)($1) , $2 , (Exp*)($4)); }
+                            | ID ASSIGN Exp SC                                              { $$ = new NIStatement($1 , (Exp*)($3)); }
+                            | Call SC                                                       { ; }
+                            | RETURN SC                                                     { $$ = new NIStatement($1 , true); }
+                            | RETURN Exp SC                                                 { $$ = new NIStatement((Exp*)($2)); }
+                            | BREAK SC                                                      { $$ = new NIStatement($1); }
+                            | CONTINUE SC                                                   { $$ = new NIStatement($1); }
+                            ;
+
+Call                        : ID LPAREN ExpList RPAREN                                      { $$ = new Call($1 , (ExpList*)($3)); }
+                            | ID LPAREN RPAREN                                              { $$ = new Call($1); }
+                            ;
+
+ExpList                     : Exp COMMA ExpList                                             { $$ = new ExpList((Exp*)($1) , (ExpList*)($3)); }
+                            | Exp                                                           { $$ = new ExpList((Exp*)($1)); }
+                            ;
+
+Type                        : INT                                                           { $$ = new Type($1); }
+                            | BYTE                                                          { $$ = new Type($1); }
+                            | BOOL                                                          { $$ = new Type($1); }
+                            ;
+
+Exp                         : LPAREN Exp RPAREN                                             { $$ = new Exp((Exp*)($2)); }
+                            | Exp IF LPAREN Exp RPAREN ELSE Exp                             { $$ = new Exp((Exp*)($1) , (Exp*)($4) , (Exp*)($7)); }
+                            | Exp AND Exp                                                   { $$ = new Exp((Exp*)($1) , $2 , (Exp*)($3) , "AND"); }
+                            | Exp OR Exp                                                    { $$ = new Exp((Exp*)($1) , $2 , (Exp*)($3) , "OR"); }
+                            | ID                                                            { $$ = new Exp($1); }
+                            | Call                                                          { $$ = new Exp((Call*)($1)); }
+                            | NUM                                                           { $$ = new Exp($1 , "INT"); }
+                            | NUM B                                                         { $$ = new Exp($1 , "BYTE"); }
+                            | STRING                                                        { $$ = new Exp($1 , "STRING"); }
+                            | TRUE                                                          { $$ = new Exp($1 , "BOOL"); }
+                            | FALSE                                                         { $$ = new Exp($1 , "BOOL"); }
+                            | NOT Exp                                                       { $$ = new Exp($1 , (Exp*)($2)); }
+                            | Exp RELOP Exp                                                 { $$ = new Exp((Exp*)($1) , $2 , (Exp*)($3) , "RELOP"); }
+                            | Exp BINOP Exp                                                 { $$ = new Exp((Exp*)($1) , $2 , (Exp*)($3) , "BINOP"); }
+                            | LPAREN Type RPAREN Exp                                        { $$ = new Exp((Type*)($1) , (Exp*)($2)); }
+                            ;
+
+OpenScope                   :   { OpenScope(); }
+                            ;
+
+CloseScope                  :   { CloseScope(); }
+                            ;
+
+OpenLoop                    :   { AddLoop(); }
+                            ;
+
+CloseLoop                   :   { RemoveLoop(); }
+                            ;
+%%
+
+int main()
+{
+	return yyparse();
+}
+
+void yyerror(const char * Error)
+{
+	output::errorSyn(yylineno);
+	exit(0);
+}
